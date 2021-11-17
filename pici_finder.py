@@ -48,9 +48,49 @@ def search(x):
               "PICI_start": gene_best_hit_location(df, "pri-rep") - direction*attr_trim, "PICI_end": gene_best_hit_location(df, "pri-rep") + direction*attl_trim}
     return(result)
 
+def classify(df):
+     pici_class = 'Putative PICI'
+     if not df['alpA'] and not df['prirep']:
+          pici_class = "No PICI"
+     if df["alpA"] and df["sis"] and df["prirep"]:
+          pici_class = "SaPi"
+     if df["alpA"] and df["prirep"] and pici_class != "SaPi":
+          pici_class = "EcCi"
+     result = {"Class": pici_class,
+               'Integrase': df['Integrase'],
+               'Direction': df['direction'],
+               'Contig': df['Contig'],
+               "PICI_start": df["PICI_start"],
+               "PICI_end": df["PICI_end"]
+     }
+     return(result)
+#     print("++++++")
+#     print(df)
+#     print(pici_class)
+#     print("==============")
+
 def flatten(t):
     return [item for sublist in t for item in sublist]
 
+def preprocess_blast(path):
+    tblastn_result = pd.read_csv("tblastn.tsv", sep = "\t",  names=['qseqid', 'sseqid', 'pident', 'length', 'mismatch', 'gapopen', 'qstart', 'qend',
+                                                                'sstart', 'send', 'evalue', 'bitscore'])
+    tblastn_result["Gene_class"] = [re.sub('[0-9]{1,2}', '', x) for x in tblastn_result['qseqid']]
+    tblastn_result["int_match"]  = (tblastn_result["Gene_class"] == "int") & (tblastn_result['pident'] > int_threshold)
+    tblastn_result["Genome_name"] = genome
+    intmatches = tblastn_result[tblastn_result['int_match'] == True]
+    intranges = [range(sorted(x)[0], sorted(x)[1]) for x in zip(intmatches['sstart'], intmatches['send'])]
+    overlaps = []
+    for i_index, i in enumerate(intranges):
+        for j_index, j in enumerate(intranges):
+            if i_index == j_index:
+                continue
+            if len(set(i).intersection(j)) > 0:
+                overlaps.append((i_index, j_index))
+    #TODO remove overlapping int hits
+    return(tblastn_result)
+
+     
 int_threshold = 40
 pri_rep_ident_threshold = 50
 
@@ -76,29 +116,14 @@ for index, genome in enumerate(os.listdir(genome_path)[0:3]):
         print( "\r" + str(perc) )
         sys.stdout.flush()
     r = run_tblastn("databases/BLAST_protein_db.faa", genome_path+genome, "tblastn.tsv", cpus = cpus)
-    tblastn_result = pd.read_csv("tblastn.tsv", sep = "\t",  names=['qseqid', 'sseqid', 'pident', 'length', 'mismatch', 'gapopen', 'qstart', 'qend',
-                                                                'sstart', 'send', 'evalue', 'bitscore'])
-    tblastn_result["Gene_class"] = [re.sub('[0-9]{1,2}', '', x) for x in tblastn_result['qseqid']]
-    tblastn_result["int_match"]  = (tblastn_result["Gene_class"] == "int") & (tblastn_result['pident'] > int_threshold)
-    tblastn_result["Genome_name"] = genome
-    intmatches = tblastn_result[tblastn_result['int_match'] == True]
-    intranges = [range(sorted(x)[0], sorted(x)[1]) for x in zip(intmatches['sstart'], intmatches['send'])]
-    overlaps = []
-    for i_index, i in enumerate(intranges):
-        for j_index, j in enumerate(intranges):
-            if i_index == j_index:
-                continue
-            if len(set(i).intersection(j)) > 0:
-                overlaps.append((i_index, j_index))
-    #TODO remove overlapping int hits
-    result_list.append(tblastn_result)
+    result_list.append(preprocess_blast("tblastn.tsv"))
     
 tblastn_results = pd.concat(result_list)
 
 
-
-
 pici_results =  tblastn_results[tblastn_results['int_match'] == True].apply(search, axis = 1, result_type = 'expand')
+
+pici_classifications = pici_results.apply(classify, axis = 1, result_type = 'expand')
 #print(pici_results)
 
     
