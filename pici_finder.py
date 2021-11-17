@@ -90,6 +90,19 @@ def preprocess_blast(path):
     #TODO remove overlapping int hits
     return(tblastn_result)
 
+def blast_dir(path):
+     result_list = []
+     for index, genome in enumerate(os.listdir(genome_path)[0:3]):
+          perc = index/len(os.listdir(genome_path))*100
+          if perc % 1 == 0:
+               print( "\r" + str(perc) )
+               sys.stdout.flush()
+               r = run_tblastn("databases/BLAST_protein_db.faa", genome_path+genome, "tblastn.tsv", cpus = cpus)
+
+          result_list.append(preprocess_blast("tblastn.tsv"))
+    
+     tblastn_results = pd.concat(result_list)
+     return(tblastn_results)
      
 int_threshold = 40
 pri_rep_ident_threshold = 50
@@ -109,17 +122,8 @@ except FileExistsError:
         exit(1)
     print("Directory already exists")        
 
-result_list = []
-for index, genome in enumerate(os.listdir(genome_path)[0:3]):
-    perc = index/len(os.listdir(genome_path))*100
-    if perc % 1 == 0:
-        print( "\r" + str(perc) )
-        sys.stdout.flush()
-    r = run_tblastn("databases/BLAST_protein_db.faa", genome_path+genome, "tblastn.tsv", cpus = cpus)
-    result_list.append(preprocess_blast("tblastn.tsv"))
-    
-tblastn_results = pd.concat(result_list)
-
+if genome_path:
+     tblastn_results = blast_dir(genome_path)
 
 pici_results =  tblastn_results[tblastn_results['int_match'] == True].apply(search, axis = 1, result_type = 'expand')
 
