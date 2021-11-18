@@ -64,42 +64,39 @@ def classify(df):
                "PICI_end": df["PICI_end"]
      }
      return(result)
-#     print("++++++")
-#     print(df)
-#     print(pici_class)
-#     print("==============")
+
 
 def flatten(t):
     return [item for sublist in t for item in sublist]
 
-def preprocess_blast(path):
-    tblastn_result = pd.read_csv("tblastn.tsv", sep = "\t",  names=['qseqid', 'sseqid', 'pident', 'length', 'mismatch', 'gapopen', 'qstart', 'qend',
+def preprocess_blast(path, genome = "blast"):
+    tblastn_result = pd.read_csv(path, sep = "\t",  names=['qseqid', 'sseqid', 'pident', 'length', 'mismatch', 'gapopen', 'qstart', 'qend',
                                                                 'sstart', 'send', 'evalue', 'bitscore'])
     tblastn_result["Gene_class"] = [re.sub('[0-9]{1,2}', '', x) for x in tblastn_result['qseqid']]
     tblastn_result["int_match"]  = (tblastn_result["Gene_class"] == "int") & (tblastn_result['pident'] > int_threshold)
     tblastn_result["Genome_name"] = genome
-    intmatches = tblastn_result[tblastn_result['int_match'] == True]
-    intranges = [range(sorted(x)[0], sorted(x)[1]) for x in zip(intmatches['sstart'], intmatches['send'])]
-    overlaps = []
-    for i_index, i in enumerate(intranges):
-        for j_index, j in enumerate(intranges):
-            if i_index == j_index:
-                continue
-            if len(set(i).intersection(j)) > 0:
-                overlaps.append((i_index, j_index))
+    # intmatches = tblastn_result[tblastn_result['int_match'] == True]
+    # intranges = [range(sorted(x)[0], sorted(x)[1]) for x in zip(intmatches['sstart'], intmatches['send'])]
+    # overlaps = []
+    # for i_index, i in enumerate(intranges):
+    #     for j_index, j in enumerate(intranges):
+    #         if i_index == j_index:
+    #             continue
+    #         if len(set(i).intersection(j)) > 0:
+    #             overlaps.append((i_index, j_index))
     #TODO remove overlapping int hits
     return(tblastn_result)
 
 def blast_dir(path):
      result_list = []
-     for index, genome in enumerate(os.listdir(genome_path)[0:3]):
-          perc = index/len(os.listdir(genome_path))*100
+     for index, genome in enumerate(os.listdir(path)[0:3]):
+          perc = index/len(os.listdir(path_path))*100
           if perc % 1 == 0:
                print( "\r" + str(perc) )
                sys.stdout.flush()
                r = run_tblastn("databases/BLAST_protein_db.faa", genome_path+genome, "tblastn.tsv", cpus = cpus)
 
-          result_list.append(preprocess_blast("tblastn.tsv"))
+          result_list.append(preprocess_blast("tblastn.tsv", genome))
     
      tblastn_results = pd.concat(result_list)
      return(tblastn_results)
@@ -111,7 +108,9 @@ trim_threshold = 30000
 pri_rep_trim = 25000
 attr_trim = 2000
 attl_trim = 25000
-genome_path = "data/Alfred/"
+#genome_path = "data/Alfred/"
+genome_path = ""
+blast_path = "data/RefSeq/blast_small.tsv"
 force = True
 output_dir = "slet_virome_sensitivity"
 cpus = 4
@@ -122,13 +121,15 @@ except FileExistsError:
         exit(1)
     print("Directory already exists")        
 
-if genome_path:
+if genome_path !=  "":
      tblastn_results = blast_dir(genome_path)
+else:
+     tblastn_results = preprocess_blast(blast_path)
 
 pici_results =  tblastn_results[tblastn_results['int_match'] == True].apply(search, axis = 1, result_type = 'expand')
 
 pici_classifications = pici_results.apply(classify, axis = 1, result_type = 'expand')
-#print(pici_results)
-
+pici_classifications = pici_classifications.drop_duplicates(subset=['Contig', 'PICI_start'])
+pici_classifications = pici_classifications[pici_classifications['Class'] != "No PICI"]
     
 
